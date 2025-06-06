@@ -11,19 +11,6 @@ This project uses [SadTalker](https://github.com/OpenTalker/SadTalker) to genera
 - [How to Run with Docker](#how-to-run-with-docker)
 - [Troubleshooting](#troubleshooting)
 
-## System Overview
-
-The system generates lip-synced videos by processing an input image (containing a face) and an audio file (e.g., WAV) to produce a video where the face’s lip movements match the audio. The pipeline consists of:
-
-1. **FastAPI WebSocket Server (`main.py`)**:
-   - Accepts base64-encoded image and audio inputs via a WebSocket endpoint (`/ws/lipsync`).
-   - Saves inputs to temporary files and runs `SadTalker/inference.py` as a subprocess.
-   - Returns the generated video as base64-encoded data.
-
-2. **Streamlit Client (`client.py`)**:
-   - Provides a web interface to upload an image and audio, send them to the WebSocket server, and display the resulting video.
-
-The system runs in the `illuminus_ai` Conda environment locally or the `lip-sync-api` environment in Docker.
 ## Installation Instructions
 
 ### Local Setup (Conda)
@@ -175,12 +162,26 @@ The system runs in the `illuminus_ai` Conda environment locally or the `lip-sync
      docker logs <container-id>
      ```
 
+## System Overview
+
+The system generates lip-synced videos by processing an input image (containing a face) and an audio file (e.g., WAV) to produce a video where the face’s lip movements match the audio. The pipeline consists of:
+
+1. **FastAPI WebSocket Server (`main.py`)**:
+   - Accepts base64-encoded image and audio inputs via a WebSocket endpoint (`/ws/lipsync`).
+   - Saves inputs to temporary files and runs `SadTalker/inference.py` as a subprocess.
+   - Returns the generated video as base64-encoded data.
+
+2. **Streamlit Client (`client.py`)**:
+   - Provides a web interface to upload an image and audio, send them to the WebSocket server, and display the resulting video.
+
+The system runs in the `illuminus_ai` Conda environment locally or the `lip-sync-api` environment in Docker.
+
 ## How to Test with a WebSocket Client
 
 1. **Prepare a Test Script (`main.py`)**:
 
 2. **Prepare Test Files**:
-   - Place a test image (`sample_image.png`) and audio (`sample_audio.wav`) in `default folder`.
+   - Place a test image (`sample_image.png`) and audio (`sample_audio.wav`) in `<default-folder>`.
 
 3. **Run the Server**:
    ```powershell
@@ -195,7 +196,7 @@ The system runs in the `illuminus_ai` Conda environment locally or the `lip-sync
    - Browse the test image and audio.
    - Wait for the server to process the input and send the response back to the client.
    - Video file will appear on test client.
-   - Output: `.mp4`  will be saved in `temp/output` if successful.
+   - Output: `<date-and-time>.mp4` will be saved in `temp/output` if successful.
 
 ## How to Run with Docker
 
@@ -216,7 +217,7 @@ The system runs in the `illuminus_ai` Conda environment locally or the `lip-sync
 
 3. **Access the Application**:
    - **FastAPI WebSocket**: Connect to `ws://localhost:8000/ws/lipsync`.
-   - **Streamlit Client**: Open `http://localhost:8501` in a browser to upload image/audio and view results.
+   - **Streamlit Client**: Open `http://localhost:8501` in a browser to upload image and audio and view results.
 
 4. **Test with WebSocket Client**:
    - Follow the [WebSocket client instructions](#how-to-test-with-a-websocket-client) while the container is running.
@@ -224,7 +225,7 @@ The system runs in the `illuminus_ai` Conda environment locally or the `lip-sync
 ## Troubleshooting
 
 - **ValueError in `preprocess.py`**:
-  - Verify `test.png` contains a clear face.
+  - Verify `sample_image.png` contains a clear face.
   - Ensure `preprocess.py` has the updated `POS` function.
 
 - **Docker Issues**:

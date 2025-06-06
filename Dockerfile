@@ -17,9 +17,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN conda install pytorch==2.0.1 torchvision==0.15.2 -c pytorch && \
     pip install --timeout=1000 -r requirements.txt
-RUN git clone https://github.com/OpenTalker/SadTalker.git && \
-    cd SadTalker && \
-    pip install -r requirements.txt
+RUN git clone https://github.com/OpenTalker/SadTalker.git
 RUN mkdir -p /app/SadTalker/checkpoints && \
     wget -P /app/SadTalker/checkpoints https://github.com/OpenTalker/SadTalker/releases/download/v0.0.2-rc/SadTalker_V0.0.2_256.safetensors && \
     wget -P /app/SadTalker/checkpoints https://github.com/OpenTalker/SadTalker/releases/download/v0.0.2-rc/mapping_00109-model.pth.tar && \

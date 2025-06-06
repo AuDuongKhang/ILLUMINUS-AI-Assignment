@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import os
+import uuid
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
