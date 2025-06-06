@@ -1,71 +1,118 @@
-from fastapi import FastAPI, WebSocket
+import asyncio
 import base64
+import json
 import os
-import cv2
-import librosa
+from fastapi import FastAPI, WebSocket
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 import uvicorn
-from Wav2Lip.inference import run_inference as wav2lip_inference
+from fastapi import WebSocketDisconnect
+
 
 app = FastAPI()
-
 TEMP_DIR = "temp"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
 
-@app.websocket("/lip-sync")
-async def lip_sync_endpoint(websocket: WebSocket):
+class LipSyncInput(BaseModel):
+    image: str
+    audio: str
+
+
+async def run_sadtalker(image_path: str, audio_path: str, output_path: str):
+    try:
+        sadtalker_cmd = [
+            "python", "SadTalker/inference.py",
+            "--driven_audio", audio_path,
+            "--source_image", image_path,
+            "--result_dir", output_path,
+            "--still",
+            "--preprocess", "crop",
+            "--enhancer", "gfpgan",
+            "--checkpoint_dir", "SadTalker/checkpoints",
+        ]
+        process = await asyncio.create_subprocess_exec(
+            *sadtalker_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0:
+            raise Exception(f"SadTalker failed: {stderr.decode()}")
+
+        for file in os.listdir(output_path):
+            if file.endswith(".mp4"):
+                return os.path.join(output_path, file)
+        raise Exception("No video file generated")
+    except Exception as e:
+        raise Exception(f"SadTalker processing error: {str(e)}")
+
+
+@app.websocket("/ws/lipsync")
+async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     try:
-        data = await websocket.receive_json()
-        audio_b64 = data.get("audio")
-        image_b64 = data.get("image")
+        while True:
+            try:
+                data = await websocket.receive_text()
+                input_data = json.loads(data)
+                input_model = LipSyncInput(**input_data)
 
-        # Decode base64 inputs
-        audio_data = base64.b64decode(audio_b64)
-        image_data = base64.b64decode(image_b64)
+                # Decode inputs
+                image_data = base64.b64decode(input_model.image)
+                audio_data = base64.b64decode(input_model.audio)
 
-        # Save inputs to temporary files
-        audio_path = os.path.join(TEMP_DIR, "input_audio.wav")
-        image_path = os.path.join(TEMP_DIR, "input_image.png")
-        with open(audio_path, "wb") as f:
-            f.write(audio_data)
-        with open(image_path, "wb") as f:
-            f.write(image_data)
+                # Save inputs
+                image_path = os.path.join(
+                    TEMP_DIR, f"input_{uuid.uuid4()}.png")
+                audio_path = os.path.join(
+                    TEMP_DIR, f"input_{uuid.uuid4()}.wav")
+                output_dir = os.path.join(TEMP_DIR, "output")
 
-        # Preprocess inputs (e.g., ensure image has a face, normalize audio)
-        img = cv2.imread(image_path)
-        if img is None:
-            await websocket.send_json({"error": "Invalid image"})
-            return
-        # Wav2Lip expects 16kHz audio
-        audio, sr = librosa.load(audio_path, sr=16000)
-        if len(audio) == 0:
-            await websocket.send_json({"error": "Invalid audio"})
-            return
+                with open(image_path, "wb") as f:
+                    f.write(image_data)
+                with open(audio_path, "wb") as f:
+                    f.write(audio_data)
 
-        # Run Wav2Lip inference
-        output_video_path = os.path.join(TEMP_DIR, "output_video.mp4")
-        wav2lip_inference(
-            checkpoint_path="models/Wav2Lip-SD-GAN.pt",
-            face=image_path,
-            audio=audio_path,
-            outfile=output_video_path
-        )
+                os.makedirs(output_dir, exist_ok=True)
 
-        with open(output_video_path, "rb") as f:
-            video_b64 = base64.b64encode(f.read()).decode("utf-8")
+                # Run SadTalker
+                video_path = await run_sadtalker(image_path, audio_path, output_dir)
 
-        # Send response
-        await websocket.send_json({"video": video_b64})
+                # Encode video to base64
+                with open(video_path, "rb") as f:
+                    video_data = base64.b64encode(f.read()).decode()
 
-        os.remove(audio_path)
-        os.remove(image_path)
-        os.remove(output_video_path)
+                # Send response
+                response = {
+                    "video": video_data,
+                    "status": "success",
+                    "message": ""
+                }
+                await websocket.send_json(response)
 
+            except Exception as e:
+                await websocket.send_json({
+                    "video": "",
+                    "status": "error",
+                    "message": str(e)
+                })
+    except WebSocketDisconnect as e:
+        print(f"WebSocket disconnected: {e.code} {e.reason}")
     except Exception as e:
-        await websocket.send_json({"error": str(e)})
+        print(f"Unexpected error: {str(e)}")
     finally:
-        await websocket.close()
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass
+
+
+@app.get("/health")
+async def health_check():
+    return JSONResponse({"status": "healthy"})
+
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000,
+                ws_ping_timeout=120, ws_ping_interval=60)
